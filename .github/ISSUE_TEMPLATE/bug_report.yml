@@ -1,0 +1,33 @@
+name: Bug report / 故障报告
+description: Report a reproducible problem without credentials or raw API data.
+body:
+  - type: markdown
+    attributes:
+      value: 请勿上传Cookie、手机会话、设备标识、APK、签名资源或原始响应。仅使用已脱敏的摘要。
+  - type: input
+    id: environment
+    attributes:
+      label: Windows / Python / Java / App versions
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      options:
+        - Bilibili
+        - Heybox
+        - Coordinator / report
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and expected result
+    validations:
+      required: true
+  - type: textarea
+    id: safe_summary
+    attributes:
+      label: Sanitized summary only
+      description: No tokens, signed URLs, private runtime or complete responses.

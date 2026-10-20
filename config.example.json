@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "stateRoot": "%LOCALAPPDATA%\\LocalDailyCheckin",
+  "schedule": {
+    "localTime": "20:00",
+    "timeZone": "Asia/Shanghai"
+  },
+  "bilibili": {
+    "enabled": true,
+    "version": "4.2.1"
+  },
+  "heybox": {
+    "enabled": false
+  }
+}
