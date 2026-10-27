@@ -1,0 +1,9 @@
+{
+  "Repository": "https://github.com/RayWangQvQ/BiliBiliToolPro.git",
+  "Commit": "ed3ed2c50728022b02badf21c04b1573c495052e",
+  "License": "GPL-3.0-only",
+  "SdkVersion": "10.0.300",
+  "NativeVersion": "4.2.1-localfix8-navbalance",
+  "Patch": "0001-governed-daily-navbalance.patch",
+  "PatchSHA256": "83E11D65AAB1F97484FF893D6EDAA0417B97A0F83D3BD72D14028A36FECD8C54"
+}

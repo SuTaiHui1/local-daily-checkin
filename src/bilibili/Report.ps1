@@ -4,33 +4,51 @@ $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($StateRoot))
 $logDir=Join-Path $root 'Logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-$today=(Get-Date).ToString('yyyy-MM-dd')
-$stamp=(Get-Date).ToString('yyyyMMdd')
+$now=[datetimeoffset]::Now;$china=$now.ToOffset([timespan]::FromHours(8))
+$today=$china.ToString('yyyy-MM-dd');$stamp=$china.ToString('yyyyMMdd')
 $reportPath=Join-Path $logDir ('Report-'+$stamp+'.json')
 $summaryPath=Join-Path $logDir ('Experience-'+$stamp+'.json')
 $details=$null; $detailsPath=$null; $summary=$null; $summarySource='Unavailable'; $lines=@(); $donations=@(); $nativeCoins=0
 $reason=$null
 if(Test-Path -LiteralPath (Join-Path $root 'daily-paused.txt')){$reason='LocalExecutionPaused'}
-if($DailyLog -and (Test-Path -LiteralPath $DailyLog)) {
-    if([IO.Path]::GetFileName($DailyLog) -notmatch ('^Daily-'+$stamp+'-\d{6}\.txt$')){throw 'DailyLogDateMismatch'}
-    $lines=@(Get-Content -LiteralPath $DailyLog -Encoding UTF8)
-    $nativeCoins=@($lines | Where-Object {$_ -match '投币成功，经验\+10'}).Count
+$invocation=$null;$invocationValid=$false;$nativeCoins=$null
+$invocationPath=Join-Path $logDir 'last-invocation.json'
+if(Test-Path -LiteralPath $invocationPath){
+    try {
+        $invocation=Get-Content -LiteralPath $invocationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $at=[datetimeoffset]::Parse($invocation.InvocationObservedAt)
+        $invocationValid=$invocation.Date -ceq $today -and $at -le $now -and $at.ToOffset([timespan]::FromHours(8)).ToString('yyyy-MM-dd') -ceq $today
+    } catch {$invocationValid=$false}
+}
+if($DailyLog){
+    $DailyLog=[IO.Path]::GetFullPath($DailyLog)
+    if([IO.Path]::GetDirectoryName($DailyLog) -ine $logDir -or [IO.Path]::GetFileName($DailyLog) -cnotmatch ('^Daily-'+$stamp+'-\d{6}\.txt$')){throw 'DailyLogIdentityMismatch'}
+    if(Test-Path -LiteralPath $DailyLog){$lines=@(Get-Content -LiteralPath $DailyLog -Encoding UTF8)}
+}
+if($Action -in @('SkipCompleted','SkipAttempted','SkipRunning','Paused','SkipBeforeTodaySchedule','Status','ReportOnly','AwaitingBrowserShare')){$nativeCoins=0}
+elseif($invocationValid -and $DailyLog -and $invocation.DailyRunLog -ceq [IO.Path]::GetFileName($DailyLog) -and $invocation.RunNonce -cmatch '^[a-f0-9]{32}$'){
+    . (Join-Path $PSScriptRoot 'Daily.Common.ps1')
+    $nativeEvidence=Get-DailyEvidence -Lines $lines
+    if($nativeEvidence.EvidenceValid -and $nativeEvidence.RunNonce -ceq $invocation.RunNonce -and $nativeEvidence.Date -ceq $today -and $null -ne $invocation.NativeSuccessCoins -and $invocation.NativeSuccessCoins -in @(0,1,2,3,4,5) -and $nativeEvidence.NativeSuccessCoins -ceq $invocation.NativeSuccessCoins){$nativeCoins=$invocation.NativeSuccessCoins}
 }
 if(Test-Path -LiteralPath $summaryPath) {
     try {
         $candidate=Get-Content -LiteralPath $summaryPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $observed=[datetimeoffset]::Parse($candidate.ObservedAt)
         $logName=[string]$candidate.DailyRunLog
-        if($candidate.Date -eq $today -and $observed.LocalDateTime.Date -eq (Get-Date).Date -and $logName -match ('^Daily-'+$stamp+'-\d{6}\.txt$') -and (Test-Path -LiteralPath (Join-Path $logDir $logName))) {
+        if($candidate.Date -ceq $today -and $observed -le $now -and $observed.ToOffset([timespan]::FromHours(8)).ToString('yyyy-MM-dd') -ceq $today -and $logName -cmatch ('^Daily-'+$stamp+'-\d{6}\.txt$') -and (Test-Path -LiteralPath (Join-Path $logDir $logName))) {
             if($Action -eq 'RanToday') {
-                if($DailyLog -and $logName -ceq [IO.Path]::GetFileName($DailyLog) -and $observed.LocalDateTime -ge (Get-Item -LiteralPath $DailyLog).LastWriteTime){$summary=$candidate;$summarySource='CurrentRun'}
-            } else {$summary=$candidate;$summarySource='LastConfirmedToday'}
+                if($invocationValid -and $DailyLog -and $logName -ceq [IO.Path]::GetFileName($DailyLog) -and $candidate.RunNonce -ceq $invocation.RunNonce -and $candidate.RunNonce -cmatch '^[a-f0-9]{32}$'){
+                    $ended=[datetimeoffset]::Parse($candidate.NativeCompletedAt)
+                    if($ended -le $observed -and $ended.ToOffset([timespan]::FromHours(8)).ToString('yyyy-MM-dd') -ceq $today){$summary=$candidate;$summarySource='CurrentRun'}
+                }
+            } else {$summary=$candidate;$summarySource=if($candidate.Status -eq 'ConfirmedDailyTaskRewards' -and $candidate.SummaryComplete -eq $true){'LastConfirmedToday'}else{'LastObservedToday'}}
         }
     } catch { $reason='SummaryValidationFailed' }
 }
-$rewardConfirmed=$summary -and $summary.Status -eq 'ConfirmedDailyTaskRewards'
+$rewardConfirmed=$summary -and $summary.Status -eq 'ConfirmedDailyTaskRewards' -and $summary.SummaryComplete -eq $true
 $todayCoins=if($rewardConfirmed -and $null -ne $summary.CoinExperience){[int]$summary.CoinExperience/10}else{$null}
-if($Action -in @('SkipCompleted','Paused','SkipBeforeTodaySchedule','Status')){$nativeCoins=0}
+
 if($summary) {
     $detailsName=[string]$summary.CoinDetailsFile
     if($detailsName -match ('^CoinDetails-Daily-'+$stamp+'-\d{6}\.json$')) {
@@ -41,7 +59,7 @@ if($detailsPath -and (Test-Path -LiteralPath $detailsPath)) {
     try {
         $details=Get-Content -LiteralPath $detailsPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $expectedLog=if($summary){$summary.DailyRunLog}else{[IO.Path]::GetFileName($DailyLog)}
-        if($details.Date -eq $today -and $details.DailyRunLog -ceq $expectedLog -and ([datetimeoffset]::Parse($details.ObservedAt)).LocalDateTime.Date -eq (Get-Date).Date) {
+        if($details.Date -eq $today -and $details.DailyRunLog -ceq $expectedLog -and ([datetimeoffset]::Parse($details.ObservedAt)) -le $now -and ([datetimeoffset]::Parse($details.ObservedAt)).ToOffset([timespan]::FromHours(8)).ToString('yyyy-MM-dd') -ceq $today) {
             $donations=@($details.Donations | ForEach-Object {
                 $title=if($_.Title){[string]$_.Title}else{'未确认'}
                 if($title.Length -gt 10){$title=$title.Substring(0,10)+'…'}
@@ -59,10 +77,9 @@ foreach($entry in @(@('Login','登录','LoginExperience','登录成功'),@('Watc
     elseif($Action -eq 'SkipBeforeTodaySchedule'){$result='未到当天20:00，未执行'}
     elseif($Action -eq 'SkipCompleted'){$result='今天已完成，本次跳过'}
     elseif($Action -eq 'Status'){$result='仅查看本地记录'}
-    elseif(@($lines | Where-Object {$_ -match $entry[3]}).Count -gt 0){$result='本次成功'}
+    elseif($null -ne $value -and ($value -ge 5 -or ($key -eq 'Coin' -and $value -eq 50))){$result='今日奖励已确认'}
     elseif($key -eq 'Coin' -and @($lines | Where-Object {$_ -match '已达到停止投币等级|已完成投币任务|余额不足|余额达到或低于保留值'}).Count -gt 0){$result='按当日进度、余额或Lv6规则跳过'}
     elseif(@($lines | Where-Object {$_ -match 'RiskControlStopped'}).Count -gt 0){$result='风控后停止或未确认'}
-    if($key -eq 'Coin'){$result+='；今日累计'+$(if($null -ne $todayCoins){$todayCoins}else{'未确认'})+'枚，本次新增'+$nativeCoins+'枚'}
     $tasks[$key]=[pscustomobject]@{Key=$key;Label=$entry[1];Result=$result;DailyExperience=$value}
 }
 $loginCoin='未确认'
@@ -77,6 +94,6 @@ $summaryRows=@(
     [pscustomobject]@{Label='当前硬币余额';Value=$(if($null -ne $summary.CoinBalance){$summary.CoinBalance}else{'未确认'})},
     [pscustomobject]@{Label='运行记录';Value=$(if($DailyLog -and (Test-Path -LiteralPath $DailyLog)){$DailyLog}elseif($summary){Join-Path $logDir $summary.DailyRunLog}else{'未确认'})}
 )
-$result=[ordered]@{Date=$today;ObservedAt=(Get-Date).ToString('o');Status=$Action;Reason=$reason;DailyLog=$DailyLog;SummarySource=$summarySource;SummaryObservedAt=$summary.ObservedAt;Tasks=$tasks;NativeSuccessCoins=$nativeCoins;TodayCoins=$todayCoins;Experience=$summary;CoinDonations=$donations;DonationScope=$details.Scope;PublicTasks=@($tasks.Values);PublicSummary=$summaryRows}
+$result=[ordered]@{Date=$today;ObservedAt=(Get-Date).ToString('o');Status=$Action;Reason=$reason;DailyLog=$DailyLog;SummarySource=$summarySource;SummaryObservedAt=$summary.ObservedAt;InvocationStatus=$(if($invocationValid){$invocation.Status}else{$null});NewObservation=($summarySource -eq 'CurrentRun');ActionsSubmittedThisInvocation=$null;Tasks=$tasks;NativeSuccessCoins=$nativeCoins;TodayCoins=$todayCoins;Experience=$summary;CoinDonations=$donations;DonationScope=$details.Scope;PublicTasks=@($tasks.Values);PublicSummary=$summaryRows}
 $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $reportPath -Encoding UTF8
 [pscustomobject]@{ReportPath=$reportPath;Status=$Action;NativeSuccessCoins=$nativeCoins}

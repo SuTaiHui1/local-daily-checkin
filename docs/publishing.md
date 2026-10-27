@@ -5,7 +5,7 @@
 ## 推送前
 
 1. 阅读README中小黑盒的资源限制，保留默认关闭状态。
-2. 运行 `scripts/Test-Publish.ps1`，确认源码、配置示例和Git历史均通过。
+2. 运行 `scripts/Test-Publish.ps1`，确认源码、配置示例和Git历史均通过。修改B站补丁/构建器时，还须在仓库外干净目录完成 `scripts/Build-BilibiliNative.ps1` 的真实编译及合成原生测试，记录固定提交、补丁哈希和结果。
 3. 查看 `git status`、`git diff --cached --stat`，只暂存本目录的公开源码。
 4. 确认 `.gitignore` 生效；不要用 `git add -f` 加入私有资料。
 
@@ -34,7 +34,7 @@ git push -u origin main
 
 离线检查与实际干净电脑验收应分别记录。未完成另一设备验收前，发行说明应写“源码版/实验性小黑盒适配”，不能写“所有设备一键跑通”。
 
-可以用 `git archive --format=zip --output=../local-daily-checkin-source.zip HEAD` 从已审查的提交生成源码包。勿打包整个工作目录。SHA256用于识别该压缩包，不代表账号流程已通过真实验收。
+可以用 `git archive --format=zip --output=../local-daily-checkin-source.zip HEAD` 从已审查的提交生成源码包。勿打包整个工作目录。同时发布源码ZIP的SHA256文本。SHA256用于识别该压缩包，不代表账号流程已通过真实验收。v0.2.0源码包包含GPL原生补丁，保留上游归属；不附带构建产物、账号状态或小黑盒私有资源。
 
 GitHub Actions只做源码离线检查；页面出现绿色状态不等于平台登录、分享、投币或奖励到账成功。
 

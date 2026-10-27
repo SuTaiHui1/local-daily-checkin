@@ -1,5 +1,6 @@
 """Small, offline decisions for the four approved Heybox daily tasks."""
 import math
+import re
 from datetime import datetime
 
 KEYS=('sign','1','19','31')
@@ -41,16 +42,38 @@ def complete(tasks):
     return set(tasks)==set(KEYS) and all(tasks[k].get('PlatformState')=='finish' for k in KEYS)
 
 
+def rewards_confirmed(tasks):
+    """Completed states and four valid reward amounts are separate facts."""
+    return complete(tasks) and all(number(tasks[k].get('DailyExperience')) is not None for k in KEYS)
+
+
 def pending(tasks):
     if set(tasks)!=set(KEYS):raise ValueError('Daily task state incomplete')
     return [k for k in KEYS if tasks[k]['PlatformState']=='waiting']
+
+
+def game_comment_target(result, appid, excluded=()):
+    """Select an actual shareable review from GameCommentsObj.links only."""
+    links=result.get('links') if isinstance(result,dict) else None
+    if not isinstance(links,list):raise ValueError('Game comment list missing')
+    for index,item in enumerate(links):
+        if not isinstance(item,dict):continue
+        linkid=item.get('linkid')
+        if isinstance(linkid,bool) or not re.fullmatch(r'[1-9][0-9]{0,18}',str(linkid)):continue
+        linkid=str(linkid)
+        if str(item.get('appid'))!=str(appid) or str(item.get('link_tag'))!='3':continue
+        if item.get('is_deleted') in ('1',1,True) or item.get('is_only_me_view') in ('1',1,True):continue
+        if item.get('can_not_share_tips') or linkid in excluded:continue
+        return {'LinkId':linkid,'AppId':str(appid),'LinkTag':'3','SourcePath':'links['+str(index)+']'}
+    raise ValueError('No eligible game comment')
 
 
 def decision(current,record,scheduled=True):
     day=current.date().isoformat()
     if scheduled and current.hour<20:return 'SkipBeforeTodaySchedule'
     if record and record.get('Date')==day:
-        if complete(record.get('Tasks',{})):return 'SkipCompleted'
+        if rewards_confirmed(record.get('Tasks',{})):return 'SkipCompleted'
+        if complete(record.get('Tasks',{})):return 'RewardConfirmationPending'
         return 'SkipAttempted'
     return 'RunToday'
 

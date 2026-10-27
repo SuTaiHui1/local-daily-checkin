@@ -27,11 +27,12 @@ git.exe --version
 
 | 仓库外条件 | B站 | 小黑盒 | 获取/检查责任 |
 | --- | --- | --- | --- |
-| Windows普通用户 | x64/x86/ARM64安装资产 | 仅Windows x64验证 | AI检查，不以管理员跑账号程序 |
+| Windows普通用户 | x64修复版构建/安装 | 仅Windows x64验证 | AI检查，不以管理员跑账号程序 |
 | Windows PowerShell 5.1 | 必需启动入口 | 必需启动入口 | Windows自带；安全策略拒绝由本人处理，不放宽系统策略 |
 | PowerShell 7稳定版 | 必需经验汇总 | 可用于根入口和检查 | AI按[Microsoft说明](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows)在授权内准备；不代替5.1 |
 | Python 3.12 x64，含venv/pip | 完整离线检查需要 | 必需，已验证组合 | [Python官方Windows发布](https://www.python.org/downloads/windows/)；安装器未强制版本，不代表其他版本已兼容 |
 | JDK17 x64，含javac | 不需要 | 必需 | 如[Temurin官方17发行](https://adoptium.net/temurin/releases/?version=17)；不是JRE或其他大版本 |
+| .NET SDK 10.0.300或上游允许的稳定10.0 feature band | 修复版构建必需，运行不另需.NET | 不需要 | [Microsoft .NET下载](https://dotnet.microsoft.com/download/dotnet/10.0)，固定版本见上游global.json |
 | Maven 3.x、Git | Git用于源码获取/发布 | 必需 | [Apache安装说明](https://maven.apache.org/install.html)、[Git for Windows](https://git-scm.com/downloads/win)；安装器不代装 |
 | 本人手机App | 手机哔哩哔哩扫码 | 已登录兼容安卓官方小黑盒 | 本人扫码/授权；iPad不能替代Android导入 |
 | Android Platform-Tools | 不需要 | 首次会话导入必需 | [Google官方入口](https://developer.android.com/tools/releases/platform-tools)；唯一USB真机、本人允许USB调试 |
@@ -57,17 +58,19 @@ Setup只创建配置和状态父目录，不安装依赖/程序、不登录、�
 
 ## 3. 部署B站
 
-前提：PowerShell7可用，普通用户，模块目录无已有安装。默认路径：
+前提：Windows x64、PowerShell7、Git和匹配上游global.json的.NET SDK可用，普通用户，构建及模块目录为空。默认路径：
 
 ```powershell
 $biliState = Join-Path $env:LOCALAPPDATA 'LocalDailyCheckin\bilibili'
-pwsh.exe -NoProfile -File .\scripts\Install-Bilibili.ps1 -StateRoot $biliState
+$build = Join-Path $env:LOCALAPPDATA 'LocalDailyCheckinBuilds\bilibili-0.2.0'
+pwsh.exe -NoProfile -File .\scripts\Build-BilibiliNative.ps1 -OutputDirectory $build
+pwsh.exe -NoProfile -File .\scripts\Install-Bilibili.ps1 -StateRoot $biliState -NativeBuildDirectory $build
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\src\bilibili\Launch.ps1 -StateRoot $biliState -Mode Login
 ```
 
-安装器固定BiliBiliToolPro **4.2.1**，从官方Release选本机自包含资产并校验发布方SHA256，无需额外.NET。配置中的 `bilibili.version` 只记录版本；改字段不会升级程序，不要为追新随意换 `-Version`。
+构建器固定上游提交 `ed3ed2c50728022b02badf21c04b1573c495052e`，应用本仓库已校验补丁、执行合成原生测试并发布自包含程序。安装器要求该构建输出及完整哈希清单；不能安装官方未打补丁的4.2.1冒充修复版。配置中的 `bilibili.version` 只记录版本，改字段不会升级程序。详见[构建与来源](bilibili.md)。
 
-本人用手机哔哩哔哩App扫电脑二维码。AI只看过滤登录结果，不读取/展示Cookie。扫码或退出码0不代表每日任务完成；失效/验证码/风控保留暂停，不反复尝试。详细行为见[bilibili.md](bilibili.md)。
+本人用手机哔哩哔哩App扫电脑二维码。AI只看过滤登录结果，不读取/展示Cookie。扫码或退出码0不代表每日任务完成；失效/验证码/风控保留暂停，不反复尝试。实际核对原生和官方浏览器账号一致后，按[浏览器绑定与奖励证据](bilibili-browser.md)建立本机绑定；绑定本身不代表任务验收。详细行为见[bilibili.md](bilibili.md)。
 
 ## 4. 小黑盒先过资源门槛
 
@@ -97,13 +100,13 @@ $heyState = Join-Path $env:LOCALAPPDATA 'LocalDailyCheckin\heybox'
 
 ## 5. 真实验收一次，再建立所需调度
 
-已获账号任务授权时，手动运行一次根入口：
+已获账号任务授权时，在当天20:00后运行一次根入口：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\Run-Daily.ps1
 ```
 
-不要先分别跑模块再跑合并入口，不为展示重跑任务。当天完成跳过，已经尝试但结果不明不重发。读取外部 `reports\Combined-YYYYMMDD.json` / `.md`，核对实际日期/观察时间及当前调用。任务/奖励各看真实业务证据；上次确认值注明时间，缺项写未确认。失败保留暂停，不另跑Report或直接请求接口补报表。B站运行时不要同时手动投币/另开工具，原生检查没有跨客户端原子额度锁。
+B站返回 `ReadyForBrowser` 时按[浏览器流程](bilibili-browser.md)完成官方页面奖励核对；取得 `ReadyForNative` 后再次调用根入口完成前置交接，小黑盒已完成则跳过。不要先分别跑模块再跑合并入口，不为展示重跑任务。当天完成跳过，已经尝试但结果不明不重发。读取外部 `reports\Combined-YYYYMMDD.json` / `.md`，核对实际日期/观察时间及当前调用。任务/奖励各看真实业务证据；上次确认值注明时间，缺项写未确认。失败保留暂停，不另跑业务或直接请求接口补报表；`-ReportOnly`只读已有记录。恢复须有本人授权、诊断/修复证据及新的一次性许可，两个平台的RecoveryId不能互用。B站运行时不要同时手动投币/另开工具，原生检查没有跨客户端原子额度锁。
 
 用户要求每日调度时：
 
@@ -111,7 +114,7 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\Run-Dail
 .\scripts\New-CodexPrompt.ps1
 ```
 
-该脚本只输出本机专用文字。AI再使用所在Codex支持的自动化工具创建一个本地20:00合并任务，核对名称、时区、ACTIVE及命令含 `-Scheduled`。缺自动化工具就报告 `SCHEDULE_NOT_CREATED`，不编辑Codex内部文件、不改用Windows任务。相关旧调度只按本次授权处理，不删除无关任务。
+该脚本只输出本机专用文字。AI再使用所在Codex支持的自动化工具创建一个本地20:00合并任务，核对名称、时区、ACTIVE及命令含 `-Scheduled`，并保留生成提示中的官方浏览器步骤。20:00是计划时间，不能把配置正确等同于每次准点唤醒。缺自动化工具就报告 `SCHEDULE_NOT_CREATED`，不编辑Codex内部文件、不改用Windows任务。相关旧调度只按本次授权处理，不删除无关任务。
 
 ## 6. 状态与完成标准
 

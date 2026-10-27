@@ -1,69 +1,79 @@
 # B站本地适配器
 
-此模块包装 [BiliBiliToolPro](https://github.com/RayWangQvQ/BiliBiliToolPro)，不重新实现投币接口、不包含任何用户的登录数据。默认固定官方稳定版 [4.2.1](https://github.com/RayWangQvQ/BiliBiliToolPro/releases/tag/4.2.1)，发布版本对应 `ed3ed2c`。第三方程序不会以管理员运行。
+本模块基于 [BiliBiliToolPro](https://github.com/RayWangQvQ/BiliBiliToolPro) 固定提交 `ed3ed2c50728022b02badf21c04b1573c495052e`，应用本仓库的 GPL 源码补丁后构建。修复版从登录 `nav.Money` 读取余额，记录投币提交意图和结果，并以官方浏览器奖励证据作为分享前置。
 
-## 安装与首次登录
+## 构建、安装与登录
 
-需要 Windows 10/11、Windows PowerShell 5.1 和 [Microsoft PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows)。安装器识别 Windows x64/x86/ARM64，下载对应官方自包含 ZIP，因此 BiliBiliToolPro 不需要额外安装 .NET 运行时。脚本不会静默安装系统依赖、驱动或创建 Windows 计划任务。
+当前构建目标是 Windows x64。需要 Git、.NET SDK **10.0.300**或符合上游 `rollForward=latestFeature` 的稳定10.0 SDK、Windows PowerShell 5.1 和 [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows)。SDK版本随固定上游 `global.json` 校验；自包含产物运行时不另需.NET。脚本不会静默安装系统工具、驱动或调度。
 
-在仓库根目录，用普通用户运行：
+在仓库根目录，用普通用户运行，两个目标目录应在仓库外且为空：
 
 ```powershell
+$build = Join-Path $env:LOCALAPPDATA 'LocalDailyCheckinBuilds\bilibili-0.2.0'
 $state = Join-Path $env:LOCALAPPDATA 'LocalDailyCheckin\bilibili'
-pwsh -NoProfile -File .\scripts\Install-Bilibili.ps1 -StateRoot $state
+pwsh -NoProfile -File .\scripts\Build-BilibiliNative.ps1 -OutputDirectory $build
+pwsh -NoProfile -File .\scripts\Install-Bilibili.ps1 -StateRoot $state -NativeBuildDirectory $build
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\src\bilibili\Launch.ps1 -StateRoot $state -Mode Login
 ```
 
-使用**手机哔哩哔哩 App** 扫描电脑窗口的二维码并确认。二维码只显示于本机，临时图片会随窗口关闭删除。凭据由原生工具保存在 `$state\app\cookies.json`，无需提取或粘贴 Cookie。新建状态目录的权限限定为当前 Windows 用户与 SYSTEM，子文件继承此权限。它不是加密保险箱；具备本机管理权限的人仍可能取得文件。
+构建器校验固定提交及补丁哈希，先检查补丁能否应用，再运行合成原生回归测试并发布程序。构建清单记录源码、补丁、测试和文件哈希；安装器核对清单及实际文件，不接受任意EXE，也不能用未修复的官方4.2.1程序代替。自行构建的产物哈希用于识别本次结果，不是上游发布方的二进制签名。
 
-安装器只从 GitHub 官方 Releases 下载；优先核对 GitHub 资产 `digest` 的发布方 SHA256。4.2.1 另内置当天核实的 x64/x86/ARM64 资产 SHA256，在元数据未提供 digest 时作为固定版本校验。没有发布方可用校验值的新版本会停止安装，不把自行计算哈希冒称来源校验。当前发布方元数据接口可能受本机网络影响，脚本不会修改系统代理或自动重试。
-
-程序、日志和凭据均放在仓库外的 `StateRoot`。安装器遇到已有 `app` 时停止，不覆盖已有账号配置；升级须先备份自己的状态目录并核对新版行为。代码没有自动升级程序。
-
-## 执行、查看与暂停
+已有匹配SDK、NuGet缓存和上游Git checkout时可使用：
 
 ```powershell
-# 手动立即执行一次
-powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\src\bilibili\Launch.ps1 -StateRoot $state -Mode Daily
-# Codex 每天20:00和迟到补做统一使用这个入口
-powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\src\bilibili\Launch.ps1 -StateRoot $state -Mode Daily -Scheduled
-# 本地菜单：查看记录、重新登录、暂停/恢复、立即运行
-powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\src\bilibili\Launch.ps1 -StateRoot $state -Mode Menu
+.\scripts\Build-BilibiliNative.ps1 -OutputDirectory $build -DotnetPath 'C:\BuildTools\dotnet\dotnet.exe' -PackageCache 'C:\BuildCaches\nuget' -UpstreamRepository 'C:\BuildSources\BiliBiliToolPro' -OfflineRestore
 ```
 
-运行依赖当前 Windows 用户保持登录、电脑开机联网；Codex 调度时还需要 Codex 可以执行本机任务。此模块本身不创建任何计划任务或常驻服务。普通权限启动若被系统拒绝，会报错退出，不提升权限或绕过审批。
+这些是路径示例。离线缓存缺依赖时构建失败，不假称通过。保留构建目录中的固定上游源码、补丁及许可证。安装器拒绝非空状态目录；升级前备份本人状态，并保留凭据、失败、暂停与当日尝试记录。
 
-`StateRoot\daily-paused.txt` 是持久暂停开关，存在时 Daily 不请求平台。菜单恢复只是解除本机暂停，不会替你打开 Codex 的暂停调度。先处理明确提示的失效登录、验证码或接口问题，再恢复。菜单不会清理历史记录。
+本人用手机哔哩哔哩App扫码确认。凭据保存在外部 `$state\app\cookies.json`；不需要提取或展示Cookie。模块以普通权限运行，安装时设置当前用户/SYSTEM访问权限。登录成功不代表每日奖励完成。
 
-## 每日规则
+首次还须实际核对官方浏览器与原生登录的是同一账号，再按[官方浏览器分享步骤](bilibili-browser.md)建立本地绑定。绑定只保存个人空间链接的本地哈希，不是平台验证。
 
-- 只运行登录、观看、每日分享、投硬币；单账号。点赞、专栏投币、关注/取关、漫画、抽奖、大会员、兑换、充电和付费操作关闭；不接第三方通知。
-- 每天目标5枚，原生程序先查平台当天计入的投币经验并扣除已完成数量，包含手动部分；已投满5枚直接跳过。余额保留0，不充值，余额不足按原生逻辑减少或跳过。Lv6停止升级投币，登录观看分享仍保留。
-- 保留 POST 请求至少20秒间隔。适配器不为失败自动重跑 Daily；平台拒绝、验证码、-352或登录失效出现时，停止进程并保留暂停标记。上游原生程序本身的视频候选选择流程保持原样，不能宣称完全没有内部候选检查。
-- 单个 Windows 用户会话中用互斥锁防并行。当日安全汇总已确认全部完成时，离线跳过，既不启动工具也不发平台查询。否则最多启动一次原生 Daily，由其继续检查当天状态。
-- `-Scheduled` 在20:00后只处理实际当天；19:55–20:00可等待到20:00；更早的旧触发直接跳过，不提前做当天、不循环补历史。
-- 当天“累计最多5枚”依赖平台当天投币奖励进度及原生余额检查。请勿同时开另一套自动脚本或在其执行期间手动投币：平台接口不提供跨客户端的原子额度锁，脚本无法为并发人工操作提供绝对上限保证。
+## 执行与暂停
 
-模块不会修改系统代理和 ViewTurbo。运行时仅在子进程中清理会覆盖任务安全选项的 BiliBiliToolPro 环境变量；不修改系统/用户环境变量。安装器替换新解压程序的默认任务/日志模板，避免上游默认启用额外任务和原始文件日志。
+合并入口是正常执行路径：
+
+```powershell
+.\scripts\Run-Daily.ps1 -Scheduled
+# 仅整理已有当日报告，不请求平台
+.\scripts\Run-Daily.ps1 -ReportOnly
+```
+
+根入口先调用本地 `BrowserShare.ps1 -Action Prepare`。`ReadyForBrowser` 表示等待官方页面核对/分享，期间小黑盒独立执行。完成文档中的奖励确认并得到 `ReadyForNative` 后，再次调用根入口继续B站；完成的小黑盒会跳过。原生入口不会代替浏览器补发分享。有效恢复许可的 `ReadyForReadOnly` 只允许原生只读核对，不提交任务。
+
+官方页面分享奖励已完成时记录实际观察，不再点击；未完成时先保存一次提交标记，最多点击一次，再核对真实奖励变化。页面、账号、回执或奖励不明确就暂停。不要直接调用网页私有接口或用默认成功码填空，详见[证据格式](bilibili-browser.md)。
+
+`StateRoot\daily-paused.txt` 是持久暂停开关，存在时不请求平台。菜单不会直接清除暂停。必须先完成诊断、保留原证据并取得适用的恢复授权；验证码、登录失效等本人操作仍由本人处理。模块本身不创建Windows任务或常驻服务。
+
+## 每日规则与恢复
+
+- 仅登录、观看、每日分享、视频投币；单账号。点赞、关注取关、评论、弹幕、漫画、抽奖、大会员、充电和付费操作关闭。
+- 当日总目标5枚，平台奖励进度包含已计入的手动部分。原生持久化每次投币意图、确认或拒绝，恢复时继承当日已确认下限，不因奖励延迟再补第6枚。余额保留0，不充值；Lv6停止升级投币。
+- 不要并发手动投币或运行另一套工具；本地锁和日志不能为所有客户端提供平台级原子额度锁。
+- 保留POST最少20秒间隔；完成当天就本地跳过。20:00前不做当天任务，迟到只处理实际执行当天，不补历史。
+- 已尝试而结果不明时不自动重发。恢复使用 `-Scheduled -BilibiliRecoveryId <32位小写十六进制ID>`；它不是绕过暂停的开关。
+
+恢复许可绑定当天日期、一次性ID、原始attempt或来源证据哈希及修复说明，遵循 `Recovery.Common.ps1` 的 `AuthorizedRepair/ContinuousRepairV1` 契约。许可中的文字不能替代本人实际授权。发布者原机的持续修复授权不自动适用于其他使用者。
+
+未知投币结果会强制只读核对。只有真实平台明细、余额和当日总量支持的确认/拒绝证据才能解除未知状态；不删除attempt、投币journal或旧失败，不复用已消耗许可。任何恢复仍受同一个当日5币上限约束。
 
 ## 日报与证据口径
 
-`StateRoot\Logs\Report-YYYYMMDD.json` 是主汇总可消费的安全报告；`PublicTasks` 含登录、观看、分享、投币四项；`PublicSummary` 含登录奖励硬币、今日经验、当前等级经验、距Lv6经验、考虑余额的估计天数、余额、运行记录七项。`CoinDonations` 为“UP主名｜视频简写｜枚数”。
+`StateRoot\Logs\Report-YYYYMMDD.json` 提供登录、观看、分享、投币四项。七项汇总为登录奖励硬币、今日经验、等级经验、距Lv6经验、考虑有限余额的升级天数估算、余额、日志及观察时间。投币去向简写为“UP主｜视频简写｜枚数”。
 
-正常 Daily 结束后，`Experience.ps1` 只读查询账号经验、当天奖励、硬币收支各一次；复用收支结果查登录奖励与投币去向。每个公开视频最多一次、总计最多5次匿名查询 UP/标题，不携带登录凭据、不分页、不重试。汇总失败不会追加投币，不会再运行每日任务。
+本轮新增投币数来自匹配本轮证据，当天累计来自平台当日奖励状态，两者不可相加。`-ReportOnly` 的新增数为0；失败后复用旧快照不能确认本轮副作用时写未知。小黑盒提交尝试数也不代表奖励成功数。
 
-今日经验以平台当天奖励状态为准，包含手动和工具完成的部分；不逐次相加“登录经验+5”提示。登录赠送1币必须从当天奖励收支确认，未查到只能写未确认。投币新增数来自成功业务日志，当天累计来自奖励状态；当天支出明细可能含手动投币，不靠相似标题强行归因。升级天数按登录5、观看5、分享5、投币每枚10、每日登录获得1币及当前余额估计，不是保证日期。
+`SummarySource=CurrentRun` 需要日志与本轮匹配；`LastConfirmedToday` 保留原始 `SummaryObservedAt`，不能标成新查询。缺字段为未确认，退出码0不是完成证明。汇总程序只进行规定的有限读取，不为补表再次执行任务或追加循环查询。
 
-`SummarySource=CurrentRun` 表示匹配本次日志且汇总在完成后生成；`LastConfirmedToday` 只能作为注明 `SummaryObservedAt` 的当日上次确认值；缺失为未确认。退出码0不等于四项成功。运行日志只持久化筛选后的业务消息，不持久化请求、响应、Cookie、token、二维码内容或账号标识。不要将整个状态目录上传 GitHub，即使它被称为“日志”。
+今日经验是平台当天奖励，不把多次登录提示重复相加。登录赠币需实际收支证据，未查到为未确认。当天投币明细可能含手动操作，不把来源不明的明细冒称本工具新增。升级天数基于当前余额、每日登录所得及之后每日任务都完成的假设，是估算。
 
 ## 验证与来源
 
-本公开适配版本做了脚本解析、配置策略、模拟日期、防重复、预测与脱敏报告测试；**没有为打包而运行真实平台任务，也没有在其他用户的账号/电脑实测**。原机实际运行经验不等于通用安装包验收，接口规则改变后可能失效。
-
-离线检查：
+发布验证只运行源码、合成数据和原生回归测试，不为打包运行平台业务。构建或离线检查通过不等于其他账号/电脑已经端到端验收。
 
 ```powershell
-pwsh -NoProfile -File .\src\bilibili\Test-Offline.ps1
+.\scripts\Test-Publish.ps1
 ```
 
-官方主程序按其 [GPL v3 许可证](https://github.com/RayWangQvQ/BiliBiliToolPro/blob/main/LICENSE)单独下载，未将二进制、原始程序源码或个人账号内容包含在本仓库。这里的 PowerShell 启动/汇总适配从本项目原有本机脚本泛化，相关配置项和运行方式依据上游4.2.1文档及源码核对。新版本的签名、配置和接口行为应重新验证。
+补丁及原生测试位于 `src/bilibili/patches`，保留GPL上游归属；构建器取得固定上游源，二进制不随公开源码发布。说明和边界见[验证文档](validation.md)与[第三方声明](../THIRD_PARTY_NOTICES.md)。账号、浏览器绑定、Nonce、恢复许可和运行记录只留在本人外部状态目录，不上传GitHub。

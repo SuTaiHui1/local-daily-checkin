@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory=$true)][string]$StateRoot,[ValidateSet('Daily','Login','Menu','Status')][string]$Mode='Menu',[switch]$Scheduled)
+﻿param([Parameter(Mandatory=$true)][string]$StateRoot,[ValidateSet('Daily','Login','Menu','Status')][string]$Mode='Menu',[switch]$Scheduled,[ValidatePattern('^(?:[a-f0-9]{32})?$')][string]$RecoveryId='')
 $ErrorActionPreference='Stop'
 $StateRoot=[IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($StateRoot))
 if($StateRoot.Contains([char]34)){throw 'InvalidStatePath'}
@@ -35,8 +35,9 @@ public static class LocalLimitedLauncher {
 }
 '@
   $exe="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-  $command='"'+$exe+'" -NoProfile -ExecutionPolicy RemoteSigned -File "'+(Join-Path $PSScriptRoot 'Run.ps1')+'" -StateRoot "'+$StateRoot+'" -Mode '+$Mode
+  $command='"'+$exe+'" -NoProfile -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "'+(Join-Path $StateRoot 'Run.ps1')+'" -StateRoot "'+$StateRoot+'" -Mode '+$Mode
   if($Scheduled){$command+=' -Scheduled'}
+  if($RecoveryId){if($Mode -ne 'Daily' -or -not $Scheduled){throw 'RecoveryOnlyForScheduledDaily'};$command+=' -RecoveryId '+$RecoveryId}
   exit [LocalLimitedLauncher]::Run($exe,$command,$PSScriptRoot,($Mode -ne 'Menu'))
 } catch {
   '本机普通权限启动失败，未请求平台。' | Set-Content -LiteralPath (Join-Path $StateRoot 'boot-error.txt') -Encoding UTF8

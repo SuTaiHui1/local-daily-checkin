@@ -6,7 +6,7 @@ Windows 本机的 **B站 + 小黑盒每日任务适配器**，由 Codex 每晚20
 
 **交给AI部署时，从 [AGENTS.md](AGENTS.md) 和 [AI部署约定](docs/ai-deployment.md) 开始。** 后者逐项写明外部依赖、官方来源、命令顺序及验收条件；[小黑盒资源清单](docs/heybox-resources.md) 写明资源格式、谁能提供和哪些获取环节尚未解决。小黑盒缺资源时应关闭该模块，不能把“双平台已部署”作为交付结果。所谓签名资源不是个人证书或私钥。
 
-> **版本状态：0.1.1 源码版。** 原本机流程有真实任务完成证据；此通用发布版验证的是离线逻辑、报告、语法和发布边界。它尚未在另一位用户的电脑上完成端到端验收。尤其小黑盒缺少通用的签名初始化资源获取方法，**默认关闭，不能承诺新电脑一键跑通**。详见[小黑盒准备条件](docs/heybox.md)。
+> **版本状态：0.2.0 源码版。** 原本机流程有真实任务完成证据；此通用发布版验证的是离线逻辑、报告、语法和发布边界。它尚未在另一位用户的电脑上完成端到端验收。尤其小黑盒缺少通用的签名初始化资源获取方法，**默认关闭，不能承诺新电脑一键跑通**。详见[小黑盒准备条件](docs/heybox.md)。
 
 ## 功能
 
@@ -20,9 +20,9 @@ Windows 本机的 **B站 + 小黑盒每日任务适配器**，由 Codex 每晚20
 
 ## 环境和目录
 
-- B站：Windows、Windows PowerShell 5.1（启动）和 PowerShell 7（安全汇总）；官方自包含发行包无需另装 .NET。
+- B站：Windows x64、Windows PowerShell 5.1（启动）、PowerShell 7（安全汇总）、Git 和 .NET SDK 10.0.300或符合上游latestFeature规则的稳定10.0 SDK（构建）。从固定上游提交应用本仓库补丁后构建自包含程序，运行时无需另装 .NET。
 - 小黑盒：Windows x64、Python 3.12、JDK17、Maven、Git，以及本人兼容App的资源；首次导入另需官方 Android Platform-Tools 和本人手机授权。
-- 自动调度：已登录的本机 Codex 桌面端。执行时电脑开机联网、Windows用户保持登录、Codex保持运行；不依赖浏览器或手机一直连接。
+- 自动调度：已登录的本机 Codex 桌面端。执行时电脑开机联网、Windows用户保持登录、Codex保持运行；B站分享需要可用的官方网页及本人已登录的浏览器；手机无需一直连接。20:00是计划时间，宿主可能延迟唤醒。
 - 当前代码默认北京时间 UTC+08 与20:00。不要只改配置中的时区文字来假装支持另一时区。
 
 源码与私人数据分开：
@@ -55,14 +55,16 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\Setup.ps
 
 创建 `config.local.json`，已存在则拒绝覆盖；默认只启用B站。**这一步不访问账号、不安装程序、不创建调度。** 自定义路径后，下面各模块的 `-StateRoot` 须与配置的子目录一致。
 
-### 2. 安装B站稳定版并扫码
+### 2. 构建B站修复版、安装并扫码
 
 ```powershell
-.\scripts\Install-Bilibili.ps1
+$build = Join-Path $env:LOCALAPPDATA 'LocalDailyCheckinBuilds\bilibili-0.2.0'
+.\scripts\Build-BilibiliNative.ps1 -OutputDirectory $build
+.\scripts\Install-Bilibili.ps1 -NativeBuildDirectory $build
 .\src\bilibili\Launch.ps1 -StateRoot "$env:LOCALAPPDATA\LocalDailyCheckin\bilibili" -Mode Login
 ```
 
-安装器从官方发行渠道取得固定稳定版，按可用发布方校验值核对。使用者通过手机哔哩哔哩App扫码确认，无需手动提取Cookie。官方完整来源、升级/备份和运行选项见[详细说明](docs/bilibili.md)。
+构建器固定上游提交和补丁哈希，运行合成原生测试后生成程序与构建清单；安装器校验清单和文件哈希，拒绝用未修复的官方旧程序代替。使用者通过手机哔哩哔哩App扫码确认，无需手动提取Cookie。首次还需实际核对浏览器和原生登录账号一致，再按[浏览器分享流程](docs/bilibili-browser.md)绑定本人官方个人空间。完整构建参数与升级说明见[详细说明](docs/bilibili.md)。
 
 ### 3. 小黑盒为可选模块
 
@@ -73,7 +75,7 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\Setup.ps
 ### 4. 本机运行和查看结果
 
 ```powershell
-# 立即处理今天；已完成的任务仍会跳过
+# 处理当天；B站前置检查须在20:00后，已完成跳过
 .\scripts\Run-Daily.ps1
 
 # 定时模式：20:00前跳过，不补旧日
@@ -83,7 +85,7 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\Setup.ps
 .\scripts\Run-Daily.ps1 -ReportOnly
 ```
 
-执行已开启的模块，结果写在外部 `stateRoot/reports/Combined-YYYYMMDD.json` 和 `.md`。只有真实业务完成/奖励记录可以报成功；退出码0不等于各任务成功。没有当日资料就写未确认，不额外请求接口补齐报表。
+B站先做本地分享前置检查；`ReadyForBrowser` 表示需按[官方浏览器步骤](docs/bilibili-browser.md)核对奖励并完成一次分享。确认后再调用同一根入口继续B站，小黑盒已完成则跳过。B站等待或暂停时，小黑盒仍独立处理。结果写在外部 `stateRoot/reports/Combined-YYYYMMDD.json` 和 `.md`。只有真实业务完成/奖励记录可以报成功；退出码0不等于各任务成功。没有当日资料就写未确认，不额外请求接口补齐报表。
 
 ### 5. 让Codex创建每天20:00任务
 
@@ -101,14 +103,14 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\Setup.ps
 - 当日完整完成就本地跳过；需要执行时保留平台当天进度检查。B站总目标是当天累计5枚，不是每次启动加5枚。
 - B站保留余额0，不设累计消费预算；不足时减少/跳过，不充值。Lv6停止升级投币。
 - 运行期间不要同时手动投币或另开其他投币工具。原生差额检查不能给所有客户端提供跨平台原子额度锁。
-- 本地互斥防止并行；已经尝试但结果不明不自动重发。重复唤醒不是重做理由。
+- 本地互斥防止并行；已经尝试但结果不明不自动重发。恢复须有本人授权、明确诊断/修复证据和一次性许可；B站未知投币结果只读核对。重复唤醒不是重做理由。
 - 迟到触发只处理执行当天；新一天20:00前的旧触发跳过，不补历史日期、不补投。
 - 遇登录失效、验证码、风控、接口拒绝或未确认即停止受影响操作并保留暂停，先处理原因。不会反复请求或修改代理来撞成功。
 - 升级天数是估算：B站考虑硬币余额及以后每日登录所得1枚；小黑盒按当日任务经验和后续每天均完成估算，不承诺日期。
 
 ## 日报样式
 
-每个平台各用一张四行表格，结果区分本次成功、今天已完成跳过、失败/未确认和暂停未执行。B站投币行同时写当天累计与本次新增；表后列经验、等级、升级差额/估算、余额、奖励与记录时间。
+每个平台各用一张四行表格，结果区分本次成功、今天已完成跳过、失败/未确认和暂停未执行。开头区分本轮B站新增投币、当天累计和本轮小黑盒提交尝试数；只读报告新增为0，失败后复用旧快照的本轮动作数未知。表后列经验、等级、升级差额/估算、余额、奖励与记录时间。
 
 投币对象只简写：`UP主名｜视频简写｜1枚`。平台明细可能含手动投币，不把无法区分的来源冒称为本工具操作。
 

@@ -15,5 +15,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Offline publication checks failed.' }
 & $Python -B (Join-Path $root 'src\heybox\test_offline.py')
 if ($LASTEXITCODE -ne 0) { throw 'Heybox synthetic logic checks failed.' }
 & (Join-Path $root 'src\bilibili\Test-Offline.ps1')
+& (Join-Path $root 'src\bilibili\Test-GovernedOffline.ps1')
 & (Join-Path $root 'tests\Smoke-Coordinator.ps1')
+& (Join-Path $root 'tests\Test-CoordinatorPreparation.ps1')
 Write-Output 'Offline publication checks passed. This is not a live account acceptance test.'

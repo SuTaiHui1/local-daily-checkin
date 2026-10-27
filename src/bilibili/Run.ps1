@@ -1,5 +1,6 @@
-﻿param([Parameter(Mandatory=$true)][string]$StateRoot,[ValidateSet('Daily','Login','Menu','Status')][string]$Mode='Menu',[switch]$Scheduled)
+﻿param([Parameter(Mandatory=$true)][string]$StateRoot,[ValidateSet('Daily','Login','Menu','Status')][string]$Mode='Menu',[switch]$Scheduled,[ValidatePattern('^(?:[a-f0-9]{32})?$')][string]$RecoveryId='')
 $ErrorActionPreference='Stop'
+if($Mode -eq 'Daily'){ & (Join-Path $StateRoot 'DailyRun.ps1') -Scheduled:$Scheduled -RecoveryId $RecoveryId; exit $LASTEXITCODE }
 . (Join-Path $PSScriptRoot 'Policy.ps1')
 $root=[IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($StateRoot))
 $app=Join-Path $root 'app'
@@ -29,8 +30,8 @@ if($Mode -eq 'Menu') {
     switch(Read-Host '选择') {
       '1' { $latest=Get-ChildItem -LiteralPath $logDir -Filter 'Daily-*.txt' | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if($latest){Get-Content -LiteralPath $latest.FullName | Write-Host}; Read-Host '回车返回' | Out-Null }
       '2' { & (Join-Path $PSScriptRoot 'Launch.ps1') -StateRoot $root -Mode Login; Read-Host '回车返回' | Out-Null }
-      '3' { if($isPaused){Remove-Item -LiteralPath $pauseFile; Write-Host '本机执行已恢复；如果曾在 Codex 中暂停定时任务，也需在 Codex 中恢复。'}else{'用户从桌面入口暂停了本机执行。' | Set-Content -LiteralPath $pauseFile -Encoding UTF8; Write-Host '本机执行已暂停；Codex 唤起时也会跳过。'}; Write-Host '遇到验证码或 -352 时请先处理原因，再恢复；正在执行的实例会继续到结束。'; Read-Host '回车返回' | Out-Null }
-      '4' { & (Join-Path $PSScriptRoot 'Launch.ps1') -StateRoot $root -Mode Daily; Read-Host '回车返回' | Out-Null }
+      '3' { if($isPaused){Write-Host '暂停记录保留。请先查因并按恢复契约归档，再创建新的 RecoveryId；此菜单不清除故障证据。'}else{'用户从桌面入口暂停了本机执行。' | Set-Content -LiteralPath $pauseFile -Encoding UTF8; Write-Host '本机执行已暂停；Codex 唤起时也会跳过。'}; Write-Host '遇到验证码或 -352 时请先处理原因，再恢复；正在执行的实例会继续到结束。'; Read-Host '回车返回' | Out-Null }
+      '4' { & (Join-Path $PSScriptRoot 'Launch.ps1') -StateRoot $root -Mode Daily -Scheduled; Read-Host '回车返回' | Out-Null }
       '0' { return }
     }
   }

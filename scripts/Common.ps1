@@ -75,6 +75,20 @@ function Set-LocalDailyReportContext {
         $Report | Add-Member NoteProperty SummaryObservedAt $confirmedAt -Force
         $Report | Add-Member NoteProperty NewObservation $false -Force
         $Report | Add-Member NoteProperty ReusedForThisInvocation $true -Force
+        # A stale report cannot establish how many actions an unsuccessful new launch submitted.
+        $Report | Add-Member NoteProperty NativeSuccessCoins $null -Force
+        $Report | Add-Member NoteProperty ActionsSubmittedThisInvocation $null -Force
+    }
+    if($ReportOnly) {
+        $Report | Add-Member NoteProperty NativeSuccessCoins 0 -Force
+        $Report | Add-Member NoteProperty ActionsSubmittedThisInvocation 0 -Force
+    }
+    if($Launch -and 'LocalOnly' -in @($Launch.PSObject.Properties.Name) -and $Launch.LocalOnly) {
+        $Report | Add-Member NoteProperty NativeSuccessCoins 0 -Force
+        $Report | Add-Member NoteProperty ActionsSubmittedThisInvocation 0 -Force
+        $Report | Add-Member NoteProperty NewObservation $false -Force
+        $Report | Add-Member NoteProperty InvocationStatus $Launch.PreparationStatus -Force
+        $issue='本轮仅完成本地前置检查，未启动 B站账号任务：'+$Launch.PreparationStatus+'。'
     }
     if($issue){$Report | Add-Member NoteProperty InvocationIssue $issue -Force}
     return $Report
