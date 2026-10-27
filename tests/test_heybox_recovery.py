@@ -261,7 +261,8 @@ class DailyFlowChecks(unittest.TestCase):
         record = {'Date': DAY, 'StartedAt': DAY+'T20:05:00+08:00',
                   'Tasks': tasks(waiting=('31',)), 'RecoveryId': 'fixture'}
         write(self.root/'logs/Daily-20300102-recovery-fixture.json', record)
-        clock = types.SimpleNamespace(now=lambda: datetime(2030, 1, 2, 20, tzinfo=timezone(timedelta(hours=8))))
+        current = datetime(2030, 1, 2, 20, tzinfo=timezone(timedelta(hours=8)))
+        clock = types.SimpleNamespace(now=lambda: types.SimpleNamespace(astimezone=lambda: current))
         with patch.object(self.daily, 'datetime', clock), patch.object(sys, 'argv', ['RunDaily.py', '--status']), patch.object(sys, 'stdout', new_callable=io.StringIO) as output, patch.object(self.daily, 'run') as run, patch.object(self.daily.ctypes, 'WinDLL', side_effect=AssertionError('Status must not launch'), create=True):
             self.daily.main()
         self.assertEqual(json.loads(output.getvalue()), record)
@@ -436,8 +437,8 @@ class ReportChecks(unittest.TestCase):
         result = self.export()
         self.assertEqual(len(result['PublicTasks']), 4)
         self.assertEqual(sum(row['DailyExperience'] for row in result['PublicTasks']), 130)
-        self.assertEqual(result['SummarySource'], str(self.latest))
-        self.assertEqual(result['RecordFile'], str(self.latest))
+        self.assertEqual(result['SummarySource'], str(self.latest.resolve()))
+        self.assertEqual(result['RecordFile'], str(self.latest.resolve()))
         self.assertEqual(result['ActionsSubmittedThisInvocation'], 1)
         self.assertTrue(result['NewObservation'])
         self.assertEqual(result['PublicTasks'], result['Tasks'])
@@ -455,7 +456,7 @@ class ReportChecks(unittest.TestCase):
         self.invocation['RecordFile'] = str(self.original)
         result = self.export()
         self.assertIsNone(result['PublicTasks'][-1]['DailyExperience'])
-        self.assertEqual(result['RecordFile'], str(self.original))
+        self.assertEqual(result['RecordFile'], str(self.original.resolve()))
 
     def test_record_outside_logs_is_not_loaded(self):
         outside = write(self.root/'Daily-20300102.json', {'Date': DAY, 'Tasks': tasks()})
